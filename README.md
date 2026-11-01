@@ -38,6 +38,25 @@ To test a Companion PR, set `COMPANION_IMAGE` to the version its "Deploy to Dock
 
 Reports contain your node ids, so anonymise them before posting publicly.
 
+## Run it in Crow
+
+`.woodpecker/soak.yml` runs the same thing as a Crow pipeline, up to the 600-minute limit. It prints the report at the end of the `soak` step, and Crow cleans up the containers. The pipeline only runs on `manual` and `cron` events, so PRs never get its secrets.
+
+Crow needs these secrets, limited to `manual` and `cron`:
+
+| Secret | Value |
+|---|---|
+| `source_host`, `source_port` | The source broker |
+| `source_username`, `source_password` | The read-only account |
+| `house_config_b64` | `base64 -w0` of your `config.yaml`. Its mqtt section is replaced before Companion sees it |
+
+```bash
+crow pipeline create ESPresense/testnet-mqtt --branch main \
+  --var COMPANION_IMAGE=espresense/espresense-companion:2.6.0-b17 --var SOAK_MINS=540
+```
+
+Crow's network isn't `internal`, so this has less isolation than `compose.yaml`. Companion holds no live credentials and only knows about the mirror, but it could route to your LAN, so here the read-only account is what protects the house. Keep the repo private in Crow, because the logs contain node ids.
+
 ## Check it
 
 `scripts/smoke.sh` builds the image and proves the isolation against a fake source broker. CI runs it on every change.

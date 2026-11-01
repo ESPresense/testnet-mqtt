@@ -1,0 +1,71 @@
+# A Companion build on a private copy of the live MQTT traffic for one soak.
+#
+# Manual and cron only: this repo is public, and PRs must never get these secrets. Keep the repo private
+# in Crow too, because the logs hold house node ids.
+#
+#   crow pipeline create ESPresense/testnet-mqtt --branch main \
+#     --var COMPANION_IMAGE=espresense/espresense-companion:2.6.0-b17 --var SOAK_MINS=540
+#
+# Keep SOAK_MINS under the 600m repo timeout, or the run is killed before the report.
+when:
+  - event: [manual, cron]
+    branch: main
+
+labels:
+  backend: docker
+  platform: linux/amd64
+
+steps:
+  - name: prepare
+    image: python:3.12-alpine
+    environment:
+      HOUSE_CONFIG_B64:
+        from_secret: house_config_b64
+    commands:
+      - pip install -q --root-user-action=ignore PyYAML==6.0.2
+      - mkdir -p run/config
+      - printf %s "$HOUSE_CONFIG_B64" | base64 -d > /tmp/house.yaml
+      - python scripts/prepare_config.py /tmp/house.yaml run/config/config.yaml
+      - chmod -R a+rwX run
+
+  - name: mirror
+    image: ghcr.io/espresense/testnet-mqtt:latest
+    pull: true
+    detach: true
+    environment:
+      SOURCE_HOST:
+        from_secret: source_host
+      SOURCE_PORT:
+        from_secret: source_port
+      SOURCE_USERNAME:
+        from_secret: source_username
+      SOURCE_PASSWORD:
+        from_secret: source_password
+      CLIENT_ID: testnet-mqtt-crow
+    commands:
+      - export DATA_DIR=$CI_WORKSPACE/run
+      - exec python3 /app/relay.py
+
+  # No live credentials reach this step. Crow's network isn't internal, so unlike compose.yaml this can
+  # route to the LAN: the read-only source account is what protects the house here.
+  - name: companion
+    image: ${COMPANION_IMAGE:-espresense/espresense-companion:beta}
+    pull: true
+    detach: true
+    commands:
+      - export CONFIG_DIR=$CI_WORKSPACE/run/config
+      - log=$CI_WORKSPACE/run/companion.log
+      - cd /App
+      - dotnet ESPresense.Companion.dll > $log 2>&1 &
+      - pid=$!
+      - tail -f $log &
+      - while kill -0 $pid 2>/dev/null; do echo "$(date +%s) $(cut -d' ' -f14,15 /proc/$pid/stat) $(awk '/VmRSS/{print $2}' /proc/$pid/status)" >> $CI_WORKSPACE/run/metrics.txt; sleep 60; done
+
+  - name: soak
+    image: ghcr.io/espresense/testnet-mqtt:latest
+    pull: true
+    environment:
+      SOAK_MINS: ${SOAK_MINS:-540}
+      COMPANION_IMAGE: ${COMPANION_IMAGE:-espresense/espresense-companion:beta}
+    commands:
+      - sh scripts/soak.sh run
