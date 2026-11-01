@@ -1,0 +1,6 @@
+# Adds a fake source broker for scripts/smoke.sh.
+services:
+  source:
+    image: eclipse-mosquitto:2
+    command: ["mosquitto", "-c", "/mosquitto-no-auth.conf"]
+    networks: [uplink]

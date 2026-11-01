@@ -1,0 +1,45 @@
+# A Companion build on a private copy of your MQTT traffic. See README.md.
+services:
+  mirror:
+    image: ${MIRROR_IMAGE:-ghcr.io/espresense/testnet-mqtt:latest}
+    restart: unless-stopped
+    environment:
+      SOURCE_HOST: ${SOURCE_HOST:?set SOURCE_HOST in .env}
+      SOURCE_PORT: ${SOURCE_PORT:-1883}
+      SOURCE_TLS: ${SOURCE_TLS:-false}
+      SOURCE_USERNAME: ${SOURCE_USERNAME:-}
+      SOURCE_PASSWORD: ${SOURCE_PASSWORD:-}
+      RECORD_TRAFFIC: ${RECORD_TRAFFIC:-false}
+    volumes:
+      - data:/data
+    networks: [isolated, uplink]
+
+  companion:
+    image: ${COMPANION_IMAGE:-espresense/espresense-companion:beta}
+    restart: unless-stopped
+    cpus: ${COMPANION_CPUS:-4}
+    mem_limit: ${COMPANION_MEMORY:-2g}
+    volumes:
+      - ./config:/config/espresense
+    networks: [isolated]
+    depends_on:
+      mirror:
+        condition: service_healthy
+
+  # The isolated network can't publish ports, so this is the only way in to the UI.
+  ui:
+    image: alpine/socat
+    command: ["TCP-LISTEN:8267,fork,reuseaddr", "TCP:companion:8267"]
+    ports:
+      - "${UI_BIND:-127.0.0.1}:${UI_PORT:-0}:8267"
+    networks: [isolated, uplink]
+    depends_on: [companion]
+
+networks:
+  # internal: no route out of Docker, so a Companion bug can't reach the source broker or the LAN.
+  isolated:
+    internal: true
+  uplink:
+
+volumes:
+  data:

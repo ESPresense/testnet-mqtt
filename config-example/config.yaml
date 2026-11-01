@@ -1,0 +1,10 @@
+# Copy to config/config.yaml and add your floors, nodes and optimization settings.
+# Keep the mqtt section: the mirror is the only broker Companion can reach.
+mqtt:
+  host: mirror
+  port: 1883
+  ssl: false
+  client_id: espresense-testnet
+
+floors: []
+nodes: []
