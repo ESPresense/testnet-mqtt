@@ -7,6 +7,14 @@
 #     --var COMPANION_IMAGE=espresense/espresense-companion:2.6.0-b17 --var SOAK_MINS=540
 #
 # Keep SOAK_MINS under the 600m repo timeout, or the run is killed before the report.
+variables:
+  COMPANION_IMAGE:
+    description: Companion image to test. Use a PR's versioned tag; every PR overwrites beta
+    default: espresense/espresense-companion:beta
+  SOAK_MINS:
+    description: Minutes to run before the report. Keep this under the 600m repo timeout
+    default: '540'
+
 when:
   - event: [manual, cron]
     branch: main
